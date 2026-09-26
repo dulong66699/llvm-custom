@@ -190,7 +190,7 @@ case "$PLATFORM" in
     CROSS_CC="$TC/bin/cc"; CROSS_CXX="$TC/bin/c++"; CROSS_AR="$TC/bin/ar"; CROSS_RANLIB="$TC/bin/ranlib"
     CROSS_STRIP="$TC/bin/strip"; CROSS_OBJCOPY="$TC/bin/objcopy"; CROSS_LD="$TC/bin/ld"
     case "$TARGET" in
-      *musl*) CROSS_CFLAGS="-static -fno-sanitize=undefined"; CROSS_LDFLAGS="-static"; LLVM_STATIC=ON
+      *musl*) CROSS_CFLAGS="-fstack-clash-protection -fstack-protector-strong -static -fno-sanitize=undefined"; CROSS_LDFLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now -static"; LLVM_STATIC=ON
               [ -d "$PATCHES_DIR/musl/zig" ] && cp -R "$PATCHES_DIR/musl/zig/." "$(dirname "$(command -v zig)")/" || true ;;
       *)      CROSS_LDFLAGS="-static-libstdc++ -static-libgcc" ;;
     esac
@@ -615,7 +615,7 @@ if [ ! -f "$INSTALL_DIR/lib/libz.a" ]; then
       grep -q '#define HWCAP_S390_VX' "$_vx" || {
         echo "zlib: could not add the HWCAP_S390_VX fallback to $_vx" >&2; exit 1; }
     fi
-    AR="$CROSS_AR" RANLIB="$CROSS_RANLIB" CC="$CROSS_CC" CFLAGS="-O2 -fstack-clash-protection -fstack-protector-strong $CROSS_CFLAGS" \
+    AR="$CROSS_AR" RANLIB="$CROSS_RANLIB" CC="$CROSS_CC" CFLAGS="-O3 $CROSS_CFLAGS" \
       ./configure --prefix="$INSTALL_DIR" --static
     # zlib 1.3.2 adds crc32_vx.o to the s390x build once its -fzvector probe
     # succeeds, but its Makefile.in substitutions have no VGFMAFLAG line, so the
@@ -651,9 +651,9 @@ if [ ! -f "$INSTALL_DIR/lib/libzstd.a" ]; then
     -DCMAKE_C_COMPILER="$CROSS_CC" -DCMAKE_CXX_COMPILER="$CROSS_CXX" -DCMAKE_ASM_COMPILER="$CROSS_CC" \
     -DCMAKE_AR="$CROSS_AR" -DCMAKE_RANLIB="$CROSS_RANLIB" -DCMAKE_STRIP="$CROSS_STRIP" \
     ${CROSS_OBJCOPY:+-DCMAKE_OBJCOPY="$CROSS_OBJCOPY"} -DCMAKE_LINKER="$CROSS_LD" \
-    -DCMAKE_C_FLAGS="-fstack-clash-protection -fstack-protector-strong $CROSS_CFLAGS$ZSTD_EXTRA_CFLAGS" -DCMAKE_CXX_FLAGS="-fstack-clash-protection -fstack-protector-strong $CROSS_CXXFLAGS$ZSTD_EXTRA_CFLAGS" \
-    -DCMAKE_EXE_LINKER_FLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now $CROSS_LDFLAGS" -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now $CROSS_LDFLAGS" \
-    -DCMAKE_MODULE_LINKER_FLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now $CROSS_LDFLAGS" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="$CROSS_CFLAGS$ZSTD_EXTRA_CFLAGS" -DCMAKE_CXX_FLAGS="$CROSS_CXXFLAGS$ZSTD_EXTRA_CFLAGS" \
+    -DCMAKE_EXE_LINKER_FLAGS="$CROSS_LDFLAGS" -DCMAKE_SHARED_LINKER_FLAGS="$CROSS_LDFLAGS" \
+    -DCMAKE_MODULE_LINKER_FLAGS="$CROSS_LDFLAGS" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CROSSCOMPILING=True -DCMAKE_SYSTEM_NAME="$SYSTEM_NAME" \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DZSTD_BUILD_SHARED=OFF -DZSTD_BUILD_STATIC=ON -DZSTD_BUILD_PROGRAMS=OFF \
@@ -676,9 +676,9 @@ args=(
   -DCMAKE_C_COMPILER="$CROSS_CC" -DCMAKE_CXX_COMPILER="$CROSS_CXX" -DCMAKE_ASM_COMPILER="$CROSS_CC"
   -DCMAKE_LINKER="$CROSS_LD" -DCMAKE_AR="$CROSS_AR" -DCMAKE_RANLIB="$CROSS_RANLIB"
   -DCMAKE_STRIP="$CROSS_STRIP"
-  -DCMAKE_EXE_LINKER_FLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now $CROSS_LDFLAGS"
-  -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now $CROSS_LDFLAGS"
-  -DCMAKE_MODULE_LINKER_FLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now $CROSS_LDFLAGS"
+  -DCMAKE_EXE_LINKER_FLAGS="$CROSS_LDFLAGS"
+  -DCMAKE_SHARED_LINKER_FLAGS="$CROSS_LDFLAGS"
+  -DCMAKE_MODULE_LINKER_FLAGS="$CROSS_LDFLAGS"
   -DLLVM_ENABLE_PROJECTS="$PROJECTS"
   -DLLVM_ENABLE_ZLIB=FORCE_ON -DLLVM_ENABLE_ZSTD=FORCE_ON -DLLVM_USE_STATIC_ZSTD=ON
   -DLLVM_BUILD_STATIC=$LLVM_STATIC -DBUILD_SHARED_LIBS=OFF -DLLVM_LINK_LLVM_DYLIB=OFF
@@ -713,9 +713,9 @@ args+=(
 # The suppressions the codegen probe already used, added here so only the LLVM
 # configure sees them and the zlib/zstd builds above don't.
 if [ -n "${LLVM_PROFDATA_FILE:-}" ]; then
-  CROSS_CFLAGS="-fstack-clash-protection -fstack-protector-strong $CROSS_CFLAGS $PGO_WFLAGS"; CROSS_CXXFLAGS="-fstack-clash-protection -fstack-protector-strong $CROSS_CXXFLAGS $PGO_WFLAGS"
+  CROSS_CFLAGS="$CROSS_CFLAGS $PGO_WFLAGS"; CROSS_CXXFLAGS="$CROSS_CXXFLAGS $PGO_WFLAGS"
 fi
-[ -n "$CROSS_CFLAGS" ] && args+=(-DCMAKE_C_FLAGS="-fstack-clash-protection -fstack-protector-strong $CROSS_CFLAGS" -DCMAKE_CXX_FLAGS="-fstack-clash-protection -fstack-protector-strong $CROSS_CXXFLAGS")
+[ -n "$CROSS_CFLAGS" ] && args+=(-DCMAKE_C_FLAGS="$CROSS_CFLAGS" -DCMAKE_CXX_FLAGS="$CROSS_CXXFLAGS")
 # pass CMAKE_OBJCOPY only when the toolchain has one (empty on macos).
 [ -n "$CROSS_OBJCOPY" ] && args+=(-DCMAKE_OBJCOPY="$CROSS_OBJCOPY")
 # the vendor string reports PGO off the same variable, so it has to reach cmake.
