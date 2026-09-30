@@ -528,6 +528,16 @@ if [ "$LLVM_LTO" != OFF ]; then
       break
     fi
   done
+  # r28-beta1/2 ship libdl.a as bitcode built with a split LTO unit, which ours
+  # must match or ThinLTO import fails. A toy link imports nothing from it, so
+  # look at the archive instead of probing.
+  _libdl=$("$CROSS_CXX" $CROSS_CXXFLAGS -print-file-name=libdl.a 2>/dev/null)
+  if [ "$LLVM_LTO" != OFF ] && [ -f "$_libdl" ] &&
+     [ "$("$CROSS_AR" p "$_libdl" 2>/dev/null | head -c4 | od -An -tx1 | tr -d ' \n')" = 4243c0de ]; then
+    log "LTO: libdl is bitcode, adding -fsplit-lto-unit"
+    CROSS_CFLAGS="$CROSS_CFLAGS -fsplit-lto-unit"
+    CROSS_CXXFLAGS="$CROSS_CXXFLAGS -fsplit-lto-unit"
+  fi
   if [ "$LLVM_LTO" != OFF ] && [ ${#MLGO_ARGS[@]} -gt 0 ]; then
     # The advisor only reaches the register allocator through the linker, and zig
     # hard-errors on -mllvm: its linker args are an allowlist, with no
