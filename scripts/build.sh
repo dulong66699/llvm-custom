@@ -202,9 +202,9 @@ case "$PLATFORM" in
     CROSS_CC="$TC/bin/cc"; CROSS_CXX="$TC/bin/c++"; CROSS_AR="$TC/bin/ar"; CROSS_RANLIB="$TC/bin/ranlib"
     CROSS_STRIP="$TC/bin/strip"; CROSS_OBJCOPY="$TC/bin/objcopy"; CROSS_LD="$TC/bin/ld"
     case "$TARGET" in
-      *musl*) CROSS_CFLAGS="-static -fno-sanitize=undefined"; CROSS_LDFLAGS="-static"; LLVM_STATIC=ON
+      *musl*) CROSS_CFLAGS="-fstack-clash-protection -fstack-protector-strong -static -fno-sanitize=undefined"; CROSS_LDFLAGS="-static"; LLVM_STATIC=ON
               [ -d "$PATCHES_DIR/musl/zig" ] && cp -R "$PATCHES_DIR/musl/zig/." "$(dirname "$(command -v zig)")/" || true ;;
-      *)      CROSS_LDFLAGS="-static-libstdc++ -static-libgcc" ;;
+      *)      CROSS_LDFLAGS="-Wl,--as-needed -Wl,-z,relro,-z,now -static-libstdc++ -static-libgcc" ;;
     esac
     ;;
   bsd)
@@ -660,7 +660,7 @@ if [ ! -f "$INSTALL_DIR/lib/libz.a" ]; then
       grep -q '#define HWCAP_S390_VX' "$_vx" || {
         echo "zlib: could not add the HWCAP_S390_VX fallback to $_vx" >&2; exit 1; }
     fi
-    AR="$CROSS_AR" RANLIB="$CROSS_RANLIB" CC="$CROSS_CC" CFLAGS="$CROSS_CFLAGS" \
+    AR="$CROSS_AR" RANLIB="$CROSS_RANLIB" CC="$CROSS_CC" CFLAGS="-O3 $CROSS_CFLAGS" \
       ./configure --prefix="$INSTALL_DIR" --static
     # zlib 1.3.2 adds crc32_vx.o to the s390x build once its -fzvector probe
     # succeeds, but its Makefile.in substitutions have no VGFMAFLAG line, so the
@@ -698,7 +698,7 @@ if [ ! -f "$INSTALL_DIR/lib/libzstd.a" ]; then
     ${CROSS_OBJCOPY:+-DCMAKE_OBJCOPY="$CROSS_OBJCOPY"} -DCMAKE_LINKER="$CROSS_LD" \
     -DCMAKE_C_FLAGS="$CROSS_CFLAGS$ZSTD_EXTRA_CFLAGS" -DCMAKE_CXX_FLAGS="$CROSS_CXXFLAGS$ZSTD_EXTRA_CFLAGS" \
     -DCMAKE_EXE_LINKER_FLAGS="$CROSS_LDFLAGS" -DCMAKE_SHARED_LINKER_FLAGS="$CROSS_LDFLAGS" \
-    -DCMAKE_MODULE_LINKER_FLAGS="$CROSS_LDFLAGS" -DCMAKE_BUILD_TYPE=MinSizeRel \
+    -DCMAKE_MODULE_LINKER_FLAGS="$CROSS_LDFLAGS" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CROSSCOMPILING=True -DCMAKE_SYSTEM_NAME="$SYSTEM_NAME" \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DZSTD_BUILD_SHARED=OFF -DZSTD_BUILD_STATIC=ON -DZSTD_BUILD_PROGRAMS=OFF \
@@ -714,16 +714,16 @@ args=(
   -DCMAKE_INSTALL_PREFIX="$OUT"
   -DCMAKE_PREFIX_PATH="$INSTALL_DIR"
   -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS:-AArch64;ARM;BPF;RISCV;WebAssembly;X86}"
-  -DCMAKE_BUILD_TYPE=MinSizeRel
+  -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_CROSSCOMPILING=True
   -DCMAKE_SYSTEM_NAME="$SYSTEM_NAME"
   -DLLVM_DEFAULT_TARGET_TRIPLE="$TRIPLE"
   -DCMAKE_C_COMPILER="$CROSS_CC" -DCMAKE_CXX_COMPILER="$CROSS_CXX" -DCMAKE_ASM_COMPILER="$CROSS_CC"
   -DCMAKE_LINKER="$CROSS_LD" -DCMAKE_AR="$CROSS_AR" -DCMAKE_RANLIB="$CROSS_RANLIB"
   -DCMAKE_STRIP="$CROSS_STRIP"
-  -DCMAKE_EXE_LINKER_FLAGS="$CROSS_LDFLAGS"
-  -DCMAKE_SHARED_LINKER_FLAGS="$CROSS_LDFLAGS"
-  -DCMAKE_MODULE_LINKER_FLAGS="$CROSS_LDFLAGS"
+  -DCMAKE_EXE_LINKER_FLAGS="-s $CROSS_LDFLAGS"
+  -DCMAKE_SHARED_LINKER_FLAGS="-s $CROSS_LDFLAGS"
+  -DCMAKE_MODULE_LINKER_FLAGS="-s $CROSS_LDFLAGS"
   -DLLVM_ENABLE_PROJECTS="$PROJECTS"
   -DLLVM_ENABLE_ZLIB=FORCE_ON -DLLVM_ENABLE_ZSTD=FORCE_ON -DLLVM_USE_STATIC_ZSTD=ON
   -DLLVM_BUILD_STATIC=$LLVM_STATIC -DBUILD_SHARED_LIBS=OFF -DLLVM_LINK_LLVM_DYLIB=OFF
